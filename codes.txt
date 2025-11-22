@@ -1,0 +1,134 @@
+from sentence_transformers import SentenceTransformer
+
+model = SentenceTransformer("all-mpnet-base-v2")
+
+scope_text = """
+The Journal of Machine Learning Research publishes high-quality scholarly articles in all areas of machine learning, including theory, algorithms, artificial intelligence and applications.
+"""
+
+scope_embedding = model.encode(scope_text)
+
+
+
+
+
+
+
+# --- Google Colab notebook: fetch JMLR papers, compute SBERT embeddings, alignment analysis ---
+
+# 0) Colab: gerekli paketler
+!pip install -q sentence-transformers requests tqdm pandas scikit-learn matplotlib
+
+from sentence_transformers import SentenceTransformer
+import requests
+import time
+import pandas as pd
+from tqdm import tqdm
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+import matplotlib.pyplot as plt
+
+# 1) Parametreler
+JOURNAL = "Journal of Machine Learning Research"
+START_YEAR = 2019
+END_YEAR = 2023
+MAX_PAPERS = 100  # Colab’da rahat çalışacak sayı
+API_SLEEP = 0.1
+
+# 2) Semantic Scholar API URL
+BASE_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
+
+# 3) Paper fetch fonksiyonu
+def fetch_papers_semanticscholar(journal, year_from, year_to, max_results=100):
+    rows = []
+    query = f"journal:{journal}"
+    limit = 100
+    offset = 0
+    pbar = tqdm(total=max_results, desc="Fetching papers")
+
+    while len(rows) < max_results:
+        params = {
+            "query": query,
+            "offset": offset,
+            "limit": limit,
+            "fields": "title,abstract,year,authors"
+        }
+        resp = requests.get(BASE_URL, params=params)
+        if resp.status_code != 200:
+            print("HTTP", resp.status_code, resp.text)
+            break
+        data = resp.json()
+        papers = data.get("data", [])
+        if not papers:
+            break
+        for p in papers:
+            year = p.get("year")
+            if year is None:
+                continue
+            if year_from <= year <= year_to:
+                rows.append({
+                    "paperId": p.get("paperId") or "",
+                    "title": p.get("title") or "",
+                    "abstract": p.get("abstract") or "",  # boşsa ""
+                    "year": year
+                })
+                pbar.update(1)
+                if len(rows) >= max_results:
+                    break
+        offset += limit
+        time.sleep(API_SLEEP)
+
+    pbar.close()
+
+    df = pd.DataFrame(rows)
+    # eksik sütunları ekle
+    for col in ['abstract', 'title', 'paperId', 'year']:
+        if col not in df.columns:
+            df[col] = ""
+    return df
+
+# 4) Paperleri çek
+df = fetch_papers_semanticscholar(JOURNAL, START_YEAR, END_YEAR, max_results=MAX_PAPERS)
+print(f"Fetched {len(df)} papers")
+
+# 5) JMLR scope metni
+scope_text = (
+    "The Journal of Machine Learning Research publishes high-quality scholarly articles "
+    "in all areas of machine learning, including theory, algorithms, artificial intelligence, and applications."
+)
+
+# 6) SBERT embedding
+model = SentenceTransformer("all-mpnet-base-v2")
+all_texts = df['abstract'].fillna("").tolist() + [scope_text]
+embeddings = model.encode(all_texts, show_progress_bar=True, batch_size=32)
+abstract_embs = embeddings[:-1]
+scope_emb = embeddings[-1].reshape(1, -1)
+
+# 7) Cosine similarity (alignment score)
+sims = cosine_similarity(abstract_embs, scope_emb).flatten()
+df['alignment_score'] = sims
+
+# 8) Sonuçları kaydet
+df.to_csv("jmlr_real_alignment.csv", index=False)
+
+# 9) Hızlı görselleştirme
+year_stats = df.groupby('year')['alignment_score'].agg(['mean','std','count']).reset_index()
+
+plt.figure(figsize=(12,5))
+plt.subplot(1,2,1)
+plt.hist(df['alignment_score'], bins=30, color='skyblue', edgecolor='black')
+plt.title("Alignment score distribution")
+plt.xlabel("Cosine similarity")
+plt.ylabel("Number of papers")
+
+plt.subplot(1,2,2)
+plt.errorbar(year_stats['year'], year_stats['mean'], yerr=year_stats['std'], fmt='o-', capsize=5)
+plt.title("Yearly mean alignment")
+plt.xlabel("Year")
+plt.ylabel("Mean alignment score")
+
+plt.tight_layout()
+plt.show()
+
+print("Saved jmlr_real_alignment.csv")
+

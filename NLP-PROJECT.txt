@@ -1,0 +1,9 @@
+P7. Analyzing Thematic Alignment
+in Scientific Journals
+---------------------------------------------
+(Journal of Machine Learning Research)
+
+Aims & Scope:
+The Journal of Machine Learning Research (JMLR), established in 2000,
+provides an international forum for the electronic and paper publication of high-quality scholarly articles in all areas of machine learning.
+
