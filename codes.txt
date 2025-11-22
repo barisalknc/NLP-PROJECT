@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 # 1) Parametreler
 JOURNAL = "Journal of Machine Learning Research"
 START_YEAR = 2019
-END_YEAR = 2023
+END_YEAR = 2025
 MAX_PAPERS = 100  # Colab’da rahat çalışacak sayı
 API_SLEEP = 0.1
 
@@ -131,4 +131,5 @@ plt.tight_layout()
 plt.show()
 
 print("Saved jmlr_real_alignment.csv")
+
 
